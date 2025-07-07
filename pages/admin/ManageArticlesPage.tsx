@@ -1,0 +1,142 @@
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { supabase } from '../../lib/supabaseClient';
+import { Article } from '../../types';
+import { PlusIcon } from '../../components/icons/PlusIcon';
+import { TrashIcon } from '../../components/icons/TrashIcon';
+import Modal from '../../components/Modal';
+import ArticleForm from '../../components/ArticleForm';
+import { getSupabaseErrorMessage } from '../../lib/errorHelper';
+import { Database } from '../../lib/database.types';
+
+const ManageArticlesPage: React.FC = () => {
+    const [articles, setArticles] = useState<Article[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [currentArticle, setCurrentArticle] = useState<Article | null>(null);
+    const [actionState, setActionState] = useState<{ error: string | null; isSubmitting: boolean }>({ error: null, isSubmitting: false });
+
+    const fetchArticles = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        const { data, error } = await supabase.from('articles').select('id, created_at, slug, title, excerpt, content, image_url, author, published_at').order('published_at', { ascending: false });
+        if (error) {
+            setError(getSupabaseErrorMessage(error, 'fetching articles'));
+        } else {
+            setArticles(data || []);
+        }
+        setLoading(false);
+    }, []);
+
+    useEffect(() => {
+        fetchArticles();
+    }, [fetchArticles]);
+
+    const handleOpenModal = (article: Article | null = null) => {
+        setCurrentArticle(article);
+        setActionState({ error: null, isSubmitting: false });
+        setIsModalOpen(true);
+    };
+
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+        setCurrentArticle(null);
+    };
+
+    const handleDelete = async (id: string) => {
+        if (window.confirm('Are you sure you want to delete this article?')) {
+            const { error } = await supabase.from('articles').delete().eq('id', id);
+            if (error) {
+                alert(getSupabaseErrorMessage(error, 'deleting article'));
+            } else {
+                fetchArticles();
+            }
+        }
+    };
+
+    const handleFormSubmit = async (articleData: Omit<Article, 'id' | 'created_at'>) => {
+        setActionState({ error: null, isSubmitting: true });
+        
+        const dataToSubmit: Database['public']['Tables']['articles']['Update'] = articleData;
+        
+        const query = currentArticle
+            ? supabase.from('articles').update(dataToSubmit).eq('id', currentArticle.id)
+            : supabase.from('articles').insert([dataToSubmit as Database['public']['Tables']['articles']['Insert']]);
+        
+        const { error } = await query;
+
+        if (error) {
+            setActionState({ error: getSupabaseErrorMessage(error, 'saving article'), isSubmitting: false });
+        } else {
+            setActionState({ error: null, isSubmitting: false });
+            handleCloseModal();
+            fetchArticles();
+        }
+    };
+
+    return (
+        <div>
+            <div className="flex justify-between items-center mb-8">
+                <h1 className="text-4xl font-black uppercase tracking-wider text-white">Manage <span className="text-f1-red">Articles</span></h1>
+                <button
+                    onClick={() => handleOpenModal()}
+                    className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-base font-bold rounded-md shadow-lg text-white bg-f1-red hover:bg-red-700 transition-all transform hover:scale-105"
+                >
+                    <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
+                    Add New Article
+                </button>
+            </div>
+            
+            {loading && <p>Loading articles...</p>}
+            {error && (
+                 <div className="bg-f1-light-dark p-6 rounded-lg border border-f1-red">
+                    <h2 className="text-2xl font-bold text-f1-red mb-4">An Error Occurred</h2>
+                    <pre className="text-gray-300 whitespace-pre-wrap font-mono text-sm">{error}</pre>
+                </div>
+            )}
+            
+            {!loading && !error && (
+                <div className="bg-f1-dark shadow-xl rounded-lg overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-f1-gray">
+                            <thead className="bg-f1-gray/50">
+                                <tr>
+                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Title</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Slug</th>
+                                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Date</th>
+                                    <th scope="col" className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
+                                </tr>
+                            </thead>
+                            <tbody className="bg-f1-light-dark divide-y divide-f1-gray">
+                                {articles.map(article => (
+                                    <tr key={article.id} className="hover:bg-f1-gray/30 transition-colors">
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white truncate max-w-md">{article.title}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">{article.slug}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">{new Date(article.published_at).toLocaleDateString()}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                                            <button onClick={() => handleOpenModal(article)} className="text-blue-400 hover:text-blue-300">Edit</button>
+                                            <button onClick={() => handleDelete(article.id)} className="text-f1-red hover:text-red-400"><TrashIcon className="inline h-4 w-4" /></button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={currentArticle ? 'Edit Article' : 'Add New Article'}>
+                <ArticleForm 
+                    onSubmit={handleFormSubmit} 
+                    onClose={handleCloseModal} 
+                    initialData={currentArticle} 
+                    error={actionState.error}
+                    isSubmitting={actionState.isSubmitting}
+                />
+            </Modal>
+        </div>
+    );
+};
+
+export default ManageArticlesPage;

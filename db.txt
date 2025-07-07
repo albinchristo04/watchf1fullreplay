@@ -1,0 +1,136 @@
+-- This script sets up the entire database for the f1fullreplay.com application.
+-- To use it, copy and paste the entire content into the SQL Editor in your Supabase project dashboard and click "Run".
+
+-- Remove existing tables in the correct order to respect foreign key constraints.
+DROP TABLE IF EXISTS public.settings;
+DROP TABLE IF EXISTS public.articles;
+DROP TABLE IF EXISTS public.replays;
+DROP TABLE IF EXISTS public.grands_prix;
+
+-- Create the 'grands_prix' table to manage a list of all GP locations.
+CREATE TABLE public.grands_prix (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    name character varying NOT NULL,
+    country character varying,
+    CONSTRAINT grands_prix_pkey PRIMARY KEY (id),
+    CONSTRAINT grands_prix_name_key UNIQUE (name)
+);
+
+-- Create the 'replays' table with support for multiple streams and a link to the grands_prix table.
+CREATE TABLE public.replays (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    year integer NOT NULL,
+    grand_prix_id uuid NOT NULL,
+    thumbnail_url character varying,
+    streams jsonb DEFAULT '[]'::jsonb, -- Array of streams: [{type: 'iframe', url: '...'}, {type: 'hls', url: '...'}]
+    CONSTRAINT replays_pkey PRIMARY KEY (id),
+    CONSTRAINT replays_grand_prix_id_fkey FOREIGN KEY (grand_prix_id) REFERENCES public.grands_prix(id) ON DELETE CASCADE
+);
+
+-- Create the 'articles' table to store blog posts and news.
+CREATE TABLE public.articles (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    slug character varying NOT NULL,
+    title character varying NOT NULL,
+    excerpt text NOT NULL,
+    content text NOT NULL,
+    image_url character varying,
+    author character varying NOT NULL,
+    published_at date NOT NULL,
+    CONSTRAINT articles_pkey PRIMARY KEY (id),
+    CONSTRAINT articles_slug_key UNIQUE (slug)
+);
+
+-- Create the 'settings' table for general site configuration.
+CREATE TABLE public.settings (
+    id bigint NOT NULL,
+    site_title text,
+    site_description text,
+    CONSTRAINT settings_pkey PRIMARY KEY (id)
+);
+
+-- Enable Row Level Security (RLS) for all tables.
+ALTER TABLE public.grands_prix ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.replays ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.articles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
+
+-- POLICIES
+-- For a production app, you'd want to restrict write access to specific roles.
+-- For this setup, we allow any authenticated user to modify data.
+
+-- Grands Prix Policies
+CREATE POLICY "Enable read access for all users" ON public.grands_prix FOR SELECT USING (true);
+CREATE POLICY "Enable write access for authenticated users" ON public.grands_prix FOR ALL USING (auth.role() = 'authenticated');
+
+-- Replays Policies
+CREATE POLICY "Enable read access for all users" ON public.replays FOR SELECT USING (true);
+CREATE POLICY "Enable write access for authenticated users" ON public.replays FOR ALL USING (auth.role() = 'authenticated');
+
+-- Articles Policies
+CREATE POLICY "Enable read access for all users" ON public.articles FOR SELECT USING (true);
+CREATE POLICY "Enable write access for authenticated users" ON public.articles FOR ALL USING (auth.role() = 'authenticated');
+
+-- Settings Policies
+CREATE POLICY "Enable read access for all users" ON public.settings FOR SELECT USING (true);
+CREATE POLICY "Enable write access for authenticated users" ON public.settings FOR ALL USING (auth.role() = 'authenticated');
+
+-- DUMMY DATA
+
+-- Populate the 'grands_prix' table with a comprehensive list.
+INSERT INTO public.grands_prix (name, country) VALUES
+('Bahrain Grand Prix', 'Bahrain'),
+('Saudi Arabian Grand Prix', 'Saudi Arabia'),
+('Australian Grand Prix', 'Australia'),
+('Japanese Grand Prix', 'Japan'),
+('Chinese Grand Prix', 'China'),
+('Miami Grand Prix', 'USA'),
+('Emilia Romagna Grand Prix', 'Italy'),
+('Monaco Grand Prix', 'Monaco'),
+('Canadian Grand Prix', 'Canada'),
+('Spanish Grand Prix', 'Spain'),
+('Austrian Grand Prix', 'Austria'),
+('British Grand Prix', 'UK'),
+('Hungarian Grand Prix', 'Hungary'),
+('Belgian Grand Prix', 'Belgium'),
+('Dutch Grand Prix', 'Netherlands'),
+('Italian Grand Prix', 'Italy'),
+('Azerbaijan Grand Prix', 'Azerbaijan'),
+('Singapore Grand Prix', 'Singapore'),
+('United States Grand Prix', 'USA'),
+('Mexican Grand Prix', 'Mexico'),
+('Brazilian Grand Prix', 'Brazil'),
+('Las Vegas Grand Prix', 'USA'),
+('Qatar Grand Prix', 'Qatar'),
+('Abu Dhabi Grand Prix', 'UAE'),
+('French Grand Prix', 'France'),
+('German Grand Prix', 'Germany'),
+('Malaysian Grand Prix', 'Malaysia'),
+('Indian Grand Prix', 'India'),
+('Korean Grand Prix', 'South Korea'),
+('Turkish Grand Prix', 'Turkey'),
+('Portuguese Grand Prix', 'Portugal');
+
+-- Populate 'replays' table with new data structure
+-- Note: You can find the UUIDs for grands_prix by running `SELECT id, name FROM grands_prix;` in the SQL editor after populating it.
+-- For this script, we'll use subqueries to get the IDs dynamically.
+
+INSERT INTO public.replays (year, grand_prix_id, thumbnail_url, streams) VALUES
+(2023, (SELECT id FROM grands_prix WHERE name = 'Monaco Grand Prix'), 'https://images.unsplash.com/photo-1580556214311-9a21a5a8a70c?q=80&w=800&auto=format&fit=crop', '[{"type": "iframe", "url": "https://www.youtube.com/embed/n5v39gFE124"}, {"type": "hls", "url": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"}]'),
+(2023, (SELECT id FROM grands_prix WHERE name = 'British Grand Prix'), 'https://images.unsplash.com/photo-1633511116127-3315a0c30a47?q=80&w=800&auto=format&fit=crop', '[{"type": "iframe", "url": "https://www.youtube.com/embed/n5v39gFE124"}]'),
+(2023, (SELECT id FROM grands_prix WHERE name = 'Italian Grand Prix'), 'https://images.unsplash.com/photo-1592733922338-28a12f66e60b?q=80&w=800&auto=format&fit=crop', '[{"type": "hls", "url": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"}]'),
+(2022, (SELECT id FROM grands_prix WHERE name = 'Singapore Grand Prix'), 'https://images.unsplash.com/photo-1607997482549-36b53a47341e?q=80&w=800&auto=format&fit=crop', '[{"type": "iframe", "url": "https://www.youtube.com/embed/n5v39gFE124"}]'),
+(2022, (SELECT id FROM grands_prix WHERE name = 'Japanese Grand Prix'), 'https://images.unsplash.com/photo-1591382436329-374a2734a36f?q=80&w=800&auto=format&fit=crop', '[{"type": "iframe", "url": "https://www.youtube.com/embed/n5v39gFE124"}]'),
+(2021, (SELECT id FROM grands_prix WHERE name = 'Abu Dhabi Grand Prix'), 'https://images.unsplash.com/photo-1640106382093-3b1b6f38c5f6?q=80&w=800&auto=format&fit=crop', '[{"type": "iframe", "url": "https://www.youtube.com/embed/n5v39gFE124"}, {"type": "hls", "url": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"}]');
+
+-- Insert dummy data into the 'articles' table.
+INSERT INTO public.articles (slug, title, excerpt, content, image_url, author, published_at) VALUES
+('the-art-of-the-overtake', 'The Art of the Overtake: A Deep Dive into F1''s Most Thrilling Maneuver', 'Overtaking in Formula 1 is a high-stakes dance between precision, bravery, and strategy. We break down the key elements that make a successful pass.', 'From the slipstream to the late-braking dive bomb, overtaking is what makes F1 spectacular. This article explores the physics behind the draft, the importance of tire management in setting up a pass, and the psychological warfare between drivers. We''ll analyze famous overtakes from drivers like Senna, Schumacher, and Hamilton to understand what separates a good move from a legendary one.', 'https://images.unsplash.com/photo-1587163364295-937719a7164b?q=80&w=800&auto=format&fit=crop', 'Alex Taylor', '2023-10-26'),
+('pit-stop-perfection', 'Pit Stop Perfection: How F1 Teams Choreograph the Sub-2-Second Miracle', 'A Formula 1 pit stop is one of the most intense and synchronized team efforts in all of sports. How do they do it so fast?', 'In less time than it takes to read this sentence, an F1 team can change four tires. It''s a marvel of human performance and engineering. We go behind the scenes to look at the specialized roles of each crew member, the technology in the wheel guns, and the endless practice required to shave off milliseconds. It''s a ballet of speed and precision where a single mistake can cost a race.', 'https://images.unsplash.com/photo-1633456382906-4445b0a7b6a4?q=80&w=800&auto=format&fit=crop', 'Casey Jordan', '2023-10-22'),
+('understanding-f1-aerodynamics', 'Downforce and Drag: A Beginner''s Guide to F1 Aerodynamics', 'The invisible force of aerodynamics is the single most important factor in a Formula 1 car''s performance. Let''s simplify the complex world of wings, diffusers, and bargeboards.', 'Why are F1 cars shaped so strangely? It all comes down to mastering airflow. This guide explains the fundamental concepts of downforce (which pushes the car onto the track for better grip) and drag (which resists the car''s motion). We''ll explore how front wings, rear wings, and the car''s floor work together to create an aerodynamic masterpiece capable of cornering at incredible speeds.', 'https://images.unsplash.com/photo-1629525542315-c27d4536783c?q=80&w=800&auto=format&fit=crop', 'Sam Riley', '2023-10-18');
+
+-- Insert default settings into the 'settings' table.
+INSERT INTO public.settings (id, site_title, site_description) VALUES
+(1, 'F1 Full Replays - Watch Formula 1 Races Online', 'Your ultimate source for Formula 1 full race replays. Watch classic and recent F1 grands prix from f1fullreplay.com.');
